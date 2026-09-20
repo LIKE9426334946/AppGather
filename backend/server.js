@@ -51,7 +51,7 @@ function parseLink(input) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw fail(400, '请使用不包含账号密码的 HTTP 或 HTTPS 网址');
   }
-  return { id: randomUUID(), name, url: url.href, tagId: input.tagId ?? DEFAULT_TAG_ID, createdAt: new Date().toISOString() };
+  return { name, url: url.href };
 }
 
 function requireTag(data, id) {
@@ -99,7 +99,11 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
         return sendJson(response, 200, store.list());
       }
       if (pathname === '/api/links' && request.method === 'POST') {
-        const link = parseLink(await readJson(request));
+        const input = await readJson(request);
+        const link = {
+          id: randomUUID(), ...parseLink(input), tagId: input.tagId ?? DEFAULT_TAG_ID,
+          starred: false, createdAt: new Date().toISOString(),
+        };
         let tag;
         await store.change(data => {
           tag = { ...requireTag(data, link.tagId), collapsed: false };
@@ -112,16 +116,30 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
       }
       if (pathname.startsWith('/api/links/') && request.method === 'PATCH') {
         const id = pathname.slice('/api/links/'.length);
-        const { tagId } = await readJson(request) || {};
+        const input = await readJson(request) || {};
+        const has = key => Object.hasOwn(input, key);
+        if (has('starred') && typeof input.starred !== 'boolean') throw fail(400, '星标状态需要为 true 或 false');
         let link;
         let tag;
         await store.change(data => {
           const existing = data.links.find(item => item.id === id);
           if (!existing) throw fail(404, '这个网页已经被移除了');
-          tag = { ...requireTag(data, tagId), collapsed: false };
-          link = { ...existing, tagId };
+          link = { ...existing };
+          if (has('name') || has('url')) {
+            Object.assign(link, parseLink({
+              name: has('name') ? input.name : existing.name,
+              url: has('url') ? input.url : existing.url,
+            }));
+          }
+          if (has('starred')) link.starred = input.starred;
+          if (has('tagId')) link.tagId = input.tagId;
+          tag = requireTag(data, link.tagId);
+          // 只有移动到其他标签时才展开目标标签；星标和文字编辑不改变折叠状态。
+          const moved = link.tagId !== existing.tagId;
+          if (moved) tag = { ...tag, collapsed: false };
           return {
-            tags: data.tags.map(item => item.id === tag.id ? tag : item),
+            ...data,
+            tags: moved ? data.tags.map(item => item.id === tag.id ? tag : item) : data.tags,
             links: data.links.map(item => item.id === id ? link : item),
           };
         });

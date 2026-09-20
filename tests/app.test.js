@@ -176,3 +176,64 @@ test('多个标签容纳网页、移动网页、单独和全部折叠展开，�
   assert.equal((await app.request(`/api/links/${added[0].id}`, patch({ tagId: 'missing' }))).status, 404);
   assert.deepEqual(await readState(), state);
 });
+
+test('旧网页支持星标和单字段编辑，保留身份与折叠状态，重启后仍生效', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'appgather-stars-'));
+  const original = { id: 'existing-link', name: '原名称', url: 'https://example.com/old', tagId: 'default', createdAt: '2026-09-20T13:00:00Z' };
+  const oldData = { tags: [{ id: 'default', name: '未分类', collapsed: true }], links: [original] };
+  await writeFile(join(directory, 'links.json'), JSON.stringify(oldData));
+  let app = await start(directory);
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const readState = async () => (await app.request('/api/links')).json();
+  const url = `/api/links/${original.id}`;
+
+  assert.deepEqual(await readState(), oldData);
+  let response = await app.request(url, patch({ starred: true }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).link.starred, true);
+  assert.equal((await readState()).tags[0].collapsed, true);
+
+  response = await app.request(url, patch({ name: '  新名称  ' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).link, { ...original, name: '新名称', starred: true });
+  response = await app.request(url, patch({ url: 'http://192.168.0.150:16050/path' }));
+  assert.equal(response.status, 200);
+  const expected = { ...original, name: '新名称', url: 'http://192.168.0.150:16050/path', starred: true };
+  assert.deepEqual((await response.json()).link, expected);
+
+  await app.close();
+  app = await start(directory);
+  const state = await readState();
+  assert.deepEqual(state.links, [expected]);
+  assert.deepEqual(state.tags, oldData.tags);
+
+  assert.equal((await app.request(url, patch({ name: '不应保存', url: 'javascript:alert(1)' }))).status, 400);
+  assert.equal((await app.request(url, patch({ starred: 'false' }))).status, 400);
+  assert.deepEqual(await readState(), state);
+  response = await app.request(url, patch({ starred: false, id: 'replacement-id', createdAt: 'replacement-date' }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).link, { ...expected, starred: false });
+  await app.close();
+  app = await start(directory);
+  assert.deepEqual((await readState()).links, [{ ...expected, starred: false }]);
+});
+
+test('并发修改名称、网址、标签和星标不会覆盖其他字段或改变原顺序', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'appgather-edit-'));
+  const app = await start(directory);
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const { tag } = await (await app.request('/api/tags', post({ name: '目标标签' }))).json();
+  const { link } = await (await app.request('/api/links', post({ name: '原名称', url: 'https://example.com' }))).json();
+  const { link: second } = await (await app.request('/api/links', post({ name: '第二个网页', url: 'https://example.org' }))).json();
+  assert.equal(link.starred, false);
+
+  const updates = [{ name: '新名称' }, { url: 'https://example.net/updated' }, { tagId: tag.id }, { starred: true }];
+  const responses = await Promise.all(updates.map(update => app.request(`/api/links/${link.id}`, patch(update))));
+  assert.ok(responses.every(response => response.status === 200));
+  const state = await (await app.request('/api/links')).json();
+  assert.deepEqual(state.links, [
+    { ...link, name: '新名称', url: 'https://example.net/updated', tagId: tag.id, starred: true },
+    second,
+  ]);
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'links.json'), 'utf8')), state);
+});

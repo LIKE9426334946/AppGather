@@ -1,5 +1,7 @@
 const $ = selector => document.querySelector(selector);
 const groups = $('#tag-groups');
+const starredSection = $('#starred-section');
+const starredGrid = $('#starred-grid');
 const addDialog = $('#add-dialog');
 const deleteDialog = $('#delete-dialog');
 const tagDialog = $('#tag-dialog');
@@ -13,6 +15,8 @@ const tones = ['blue', 'violet', 'teal', 'orange', 'rose', 'cyan'];
 const arrowSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>';
 const plusSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
 const trashSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>';
+const starSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"/></svg>';
+const editSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l5-1L20 8a2.1 2.1 0 0 0-5-5L4 14Z"/></svg>';
 let links = [];
 let tags = [];
 let loaded = false;
@@ -22,6 +26,7 @@ let deleting = false;
 let creatingTag = false;
 let groupBusy = false;
 let pendingDelete = null;
+let editingLink = null;
 let toastTimer;
 
 function element(tag, className, text) {
@@ -95,6 +100,8 @@ function makeIcon(link) {
 
 function makeCard(link) {
   const card = element('article', 'app-card');
+  card.dataset.linkId = link.id;
+  card.classList.toggle('is-starred', Boolean(link.starred));
   const anchor = element('a', 'app-link');
   anchor.href = link.url;
   anchor.target = '_blank';
@@ -104,6 +111,24 @@ function makeCard(link) {
   const arrow = element('span', 'card-arrow');
   arrow.innerHTML = arrowSvg;
   anchor.append(arrow, makeIcon(link), element('h3', 'app-name', link.name), element('p', 'app-address', new URL(link.url).host));
+
+  const star = element('button', 'star-button');
+  star.type = 'button';
+  star.dataset.star = link.id;
+  star.innerHTML = starSvg;
+  star.setAttribute('aria-pressed', String(Boolean(link.starred)));
+  star.setAttribute('aria-label', `${link.starred ? '取消星标' : '设为星标'} ${link.name}`);
+  star.title = link.starred ? '取消星标' : '设为星标';
+  star.addEventListener('click', () => toggleStar(link));
+
+  const edit = element('button', 'edit-button');
+  edit.type = 'button';
+  edit.dataset.edit = link.id;
+  edit.innerHTML = editSvg;
+  edit.setAttribute('aria-label', `编辑 ${link.name}`);
+  edit.title = '编辑网页';
+  edit.hidden = !managing;
+  edit.addEventListener('click', () => openLinkForm(link));
 
   const remove = element('button', 'remove-button');
   remove.type = 'button';
@@ -120,7 +145,7 @@ function makeCard(link) {
   fillTagOptions(select, link.tagId);
   select.addEventListener('change', () => moveLink(link, select));
   move.append(select);
-  card.append(anchor, remove, move);
+  card.append(anchor, star, edit, remove, move);
   return card;
 }
 
@@ -143,7 +168,7 @@ function updateControls() {
   $('#add-tag-button').disabled = !loaded || groupBusy;
   $('#collapse-all').disabled = !loaded || groupBusy || !displayed.some(tag => !tag.collapsed);
   $('#expand-all').disabled = !loaded || groupBusy || !displayed.some(tag => tag.collapsed);
-  document.querySelectorAll('[data-add], .tag-toggle, .remove-button, [data-move]').forEach(control => {
+  document.querySelectorAll('[data-add], .tag-toggle, .star-button, .edit-button, .remove-button, [data-move]').forEach(control => {
     control.disabled = !loaded || groupBusy;
   });
 }
@@ -199,11 +224,13 @@ function makeGroup(tag) {
 }
 
 function updateManage() {
-  groups.classList.toggle('is-managing', managing);
+  for (const area of [groups, starredSection]) {
+    area.classList.toggle('is-managing', managing);
+    area.querySelectorAll('.edit-button, .remove-button, .move-control').forEach(control => { control.hidden = !managing; });
+  }
   manageButton.setAttribute('aria-pressed', String(managing));
   manageButton.querySelector('span').textContent = managing ? '完成整理' : '整理网页';
-  $('#workspace-hint').textContent = managing ? '选择网页所属标签，或点击右上角的按钮移除网页。' : '点击标签折叠或展开，点击卡片打开网页。';
-  groups.querySelectorAll('.remove-button, .move-control').forEach(control => { control.hidden = !managing; });
+  $('#workspace-hint').textContent = managing ? '编辑网页名称和地址，调整所属标签，或移除网页。' : '点击星号置顶，点击标签折叠或展开。';
 }
 
 function render() {
@@ -213,6 +240,10 @@ function render() {
   $('#link-count').textContent = links.length;
   $('#link-count').setAttribute('aria-label', `${links.length} 个网页`);
   $('#empty-state').hidden = displayed.length > 0;
+  const starred = links.filter(link => link.starred);
+  starredSection.hidden = !starred.length;
+  $('#starred-count').textContent = starred.length;
+  starredGrid.replaceChildren(...starred.map(makeCard));
   groups.hidden = !displayed.length;
   groups.replaceChildren(...displayed.map(makeGroup));
   updateManage();
@@ -225,6 +256,7 @@ async function loadLinks() {
   $('#loading-state').hidden = false;
   $('#error-state').hidden = true;
   $('#empty-state').hidden = true;
+  starredSection.hidden = true;
   groups.hidden = true;
   updateControls();
   try {
@@ -282,6 +314,32 @@ async function moveLink(original, select) {
   }
 }
 
+function focusCardAction(id, action) {
+  const target = Array.from(document.querySelectorAll(`[data-${action}]`))
+    .find(button => button.dataset[action] === id && !button.closest('[hidden]'));
+  (target || manageButton).focus({ preventScroll: true });
+}
+
+async function toggleStar(original) {
+  if (groupBusy) return;
+  groupBusy = true;
+  updateControls();
+  try {
+    const { link } = await api(`/api/links/${original.id}`, {
+      method: 'PATCH', body: JSON.stringify({ starred: !original.starred }),
+    });
+    links = links.map(item => item.id === link.id ? link : item);
+    render();
+    showToast(link.starred ? '已加入顶部星标网页' : '已取消星标');
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    groupBusy = false;
+    updateControls();
+    focusCardAction(original.id, 'star');
+  }
+}
+
 function showToast(message) {
   clearTimeout(toastTimer);
   const toast = $('#toast');
@@ -308,8 +366,19 @@ function updatePreview() {
 }
 
 function openAdd(tagId = DEFAULT_TAG_ID) {
+  openLinkForm(null, tagId);
+}
+
+function openLinkForm(link = null, tagId = DEFAULT_TAG_ID) {
+  editingLink = link;
   form.reset();
-  fillTagOptions(tagInput, tagId);
+  fillTagOptions(tagInput, link?.tagId ?? tagId);
+  nameInput.value = link?.name ?? '';
+  urlInput.value = link?.url ?? '';
+  $('#add-title').textContent = link ? '编辑网页' : '添加网页';
+  $('#add-description').textContent = link ? '修改名称、网址或所属标签。' : '给常用网页留一个位置。';
+  $('#add-dialog .icon-button').setAttribute('aria-label', link ? '关闭编辑窗口' : '关闭添加窗口');
+  setSaving(false);
   updatePreview();
   openModal(addDialog);
   nameInput.focus();
@@ -317,7 +386,9 @@ function openAdd(tagId = DEFAULT_TAG_ID) {
 
 function setSaving(busy) {
   saving = busy;
-  $('#save-button').textContent = busy ? '正在添加…' : '添加网页';
+  $('#save-button').textContent = editingLink
+    ? (busy ? '正在保存…' : '保存修改')
+    : (busy ? '正在添加…' : '添加网页');
   addDialog.querySelectorAll('input, select, button').forEach(control => { control.disabled = busy; });
 }
 
@@ -328,13 +399,23 @@ form.addEventListener('submit', async event => {
   try {
     const url = normalizeUrl(urlInput.value);
     setSaving(true);
-    const { link, tag } = await api('/api/links', { method: 'POST', body: JSON.stringify({ name: nameInput.value.trim(), url, tagId: tagInput.value }) });
-    links.push(link);
+    const payload = { name: nameInput.value.trim(), url, tagId: tagInput.value };
+    if (editingLink) {
+      for (const key of Object.keys(payload)) {
+        if (payload[key] === editingLink[key]) delete payload[key];
+      }
+    }
+    const { link, tag } = await api(editingLink ? `/api/links/${editingLink.id}` : '/api/links', {
+      method: editingLink ? 'PATCH' : 'POST', body: JSON.stringify(payload),
+    });
+    if (editingLink) links = links.map(item => item.id === link.id ? link : item);
+    else links.push(link);
     tags = tags.map(item => item.id === tag.id ? tag : item);
     render();
     addDialog.close();
-    $('.header-add').focus();
-    showToast(`已添加「${link.name}」`);
+    if (editingLink) focusCardAction(link.id, 'edit');
+    else $('.header-add').focus();
+    showToast(`已${editingLink ? '更新' : '添加'}「${link.name}」`);
   } catch (error) {
     $('#form-error').textContent = error.message;
     $('#form-error').hidden = false;

@@ -30,7 +30,7 @@
     <div class="workspace-heading">
       <div>
         <div class="title-row"><h1>我的网页</h1><span id="link-count" class="count" hidden>0</span></div>
-        <p class="workspace-hint" id="workspace-hint">点击卡片，在新标签页打开。</p>
+        <p class="workspace-hint" id="workspace-hint">点击星号置顶，点击标签折叠或展开。</p>
       </div>
       <div class="workspace-actions">
         <div class="fold-actions" aria-label="标签展开和折叠">
@@ -71,6 +71,13 @@
       </button>
     </section>
 
+    <section id="starred-section" class="starred-section" aria-labelledby="starred-title" hidden>
+      <div class="starred-heading">
+        <span class="starred-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"/></svg></span>
+        <h2 id="starred-title">星标网页</h2><span id="starred-count" class="count">0</span>
+      </div>
+      <div id="starred-grid" class="link-grid"></div>
+    </section>
     <section id="tag-groups" class="tag-groups" aria-label="按标签分类的网页" hidden></section>
     <footer class="workspace-footer"><span class="mini-mark" aria-hidden="true">▦</span> AppGather <span class="footer-divider">/</span> 我的常用，触手可及</footer>
     <noscript><p class="noscript">请启用浏览器的 JavaScript，以添加和打开网页。</p></noscript>

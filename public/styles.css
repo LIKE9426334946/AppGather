@@ -57,7 +57,7 @@ h1 { font-size: 1.75rem; letter-spacing: -.7px; font-weight: 680; line-height: 1
 .workspace-hint { font-size: .875rem; color: var(--muted); margin-top: 8px; line-height: 1.7; }
 .link-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-content: start; gap: 20px; padding-bottom: 48px; }
 .app-card { position: relative; min-width: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: 0 2px 4px #25356603; transition: border-color .22s, box-shadow .22s, transform .22s; }
-.app-link { min-height: 204px; height: 100%; border-radius: inherit; padding: 29px 16px 23px; display: flex; flex-direction: column; align-items: center; }
+.app-link { min-height: 224px; height: 100%; border-radius: inherit; padding: 50px 16px 23px; display: flex; flex-direction: column; align-items: center; }
 .app-card:has(.app-link:focus-visible) { border-color: #a5b6fb; }
 .app-icon { display: flex; align-items: center; justify-content: center; position: relative; width: 64px; height: 64px; border-radius: 19px; flex-shrink: 0; font-size: 1.625rem; font-weight: 650; box-shadow: inset 0 0 0 1px #ffffff40; }
 .tone-blue { background: #edf1ff; color: #4263d7; }
@@ -75,6 +75,14 @@ h1 { font-size: 1.75rem; letter-spacing: -.7px; font-weight: 680; line-height: 1
 .remove-button { position: absolute; z-index: 1; top: 7px; right: 7px; display: grid; place-items: center; height: 40px; width: 40px; border: 0; border-radius: 11px; background: #fff1f2; color: #ce5360; }
 .remove-button:hover { background: #ffe2e5; color: #b83543; }
 .remove-button svg { width: 18px; height: 18px; }
+.star-button, .edit-button { position: absolute; z-index: 1; top: 7px; display: grid; place-items: center; width: 40px; height: 40px; border: none; border-radius: 11px; }
+.star-button { left: 7px; color: #7c879e; background: #f5f7fb; }
+.star-button svg, .edit-button svg { width: 18px; height: 18px; }
+.star-button:not(:disabled):hover { color: #986815; background: #fff4d9; }
+.star-button[aria-pressed="true"] { color: #9d6c0f; background: #fff1c9; }
+.star-button[aria-pressed="true"] svg { fill: currentColor; }
+.edit-button { right: 47px; color: #536fbe; background: #eff3ff; }
+.edit-button:not(:disabled):hover { color: #3655a6; background: #e0e8ff; }
 .is-managing .card-arrow { display: none; }
 .is-managing .app-card { border-color: #eadce1; }
 .add-card { min-width: 0; min-height: 206px; border: 1.5px dashed #d4dcec; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 17px; color: #78849c; background: #f3f5fa; transition: border-color .2s, background .2s, color .2s; }
@@ -139,6 +147,13 @@ input:focus, select:focus { outline: none; border-color: #91a5fa; box-shadow: 0 
 .fold-actions .button:first-child { border-radius: 11px 0 0 11px; }
 .fold-actions .button:last-child { border-radius: 0 11px 11px 0; border-left: none; }
 .tag-groups { padding-bottom: 24px; }
+.starred-section { padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+.starred-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.starred-heading h2 { font-size: 1.125rem; font-weight: 650; }
+.starred-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #9d6c0f; background: #fff1c9; }
+.starred-mark svg { width: 17px; height: 17px; fill: currentColor; }
+.starred-heading .count { border-color: #eee1c3; background: #fff9ec; color: #8e6a27; }
+.starred-section .link-grid { padding-bottom: 0; }
 .tag-section { padding-bottom: 28px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
 .tag-section:last-child { margin-bottom: 0; border-bottom: none; }
 .tag-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -198,7 +213,7 @@ input:focus, select:focus { outline: none; border-color: #91a5fa; box-shadow: 0 
   .tag-add span { display: none; }
   .link-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
   .app-card, .add-card { border-radius: 17px; }
-  .app-link { min-height: 186px; padding: 24px 12px 20px; }
+  .app-link { min-height: 210px; padding: 48px 12px 20px; }
   .app-icon { width: 58px; height: 58px; border-radius: 17px; font-size: 1.5rem; }
   .app-name { margin-top: 16px; }
   .add-card { min-height: 188px; }
