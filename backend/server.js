@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createStore } from './store.js';
+import { createStore, DEFAULT_TAG_ID } from './store.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -51,7 +51,18 @@ function parseLink(input) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw fail(400, '请使用不包含账号密码的 HTTP 或 HTTPS 网址');
   }
-  return { id: randomUUID(), name, url: url.href, createdAt: new Date().toISOString() };
+  return { id: randomUUID(), name, url: url.href, tagId: input.tagId ?? DEFAULT_TAG_ID, createdAt: new Date().toISOString() };
+}
+
+function requireTag(data, id) {
+  const tag = data.tags.find(item => item.id === id);
+  if (!tag) throw fail(404, '这个标签不存在，请刷新页面后重试');
+  return tag;
+}
+
+function parseCollapsed(input) {
+  if (typeof input?.collapsed !== 'boolean') throw fail(400, '请指定折叠或展开状态');
+  return input.collapsed;
 }
 
 export async function createApp({ dataDir = process.env.DATA_DIR || join(here, 'data') } = {}) {
@@ -72,7 +83,7 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
     try {
       const { pathname } = new URL(request.url, 'http://localhost');
 
-      if (['POST', 'DELETE'].includes(request.method)) {
+      if (['POST', 'PATCH', 'DELETE'].includes(request.method)) {
         // 阻止其他网站在浏览器中跨站修改；不引入用户账号系统。
         const origin = request.headers.origin;
         if (request.headers['sec-fetch-site'] === 'cross-site' ||
@@ -85,21 +96,71 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
         return sendJson(response, 200, { status: 'ok' });
       }
       if (pathname === '/api/links' && request.method === 'GET') {
-        return sendJson(response, 200, { links: store.list() });
+        return sendJson(response, 200, store.list());
       }
       if (pathname === '/api/links' && request.method === 'POST') {
         const link = parseLink(await readJson(request));
-        await store.change(links => [...links, link]);
-        return sendJson(response, 201, { link });
+        let tag;
+        await store.change(data => {
+          tag = { ...requireTag(data, link.tagId), collapsed: false };
+          return {
+            tags: data.tags.map(item => item.id === tag.id ? tag : item),
+            links: [...data.links, link],
+          };
+        });
+        return sendJson(response, 201, { link, tag });
+      }
+      if (pathname.startsWith('/api/links/') && request.method === 'PATCH') {
+        const id = pathname.slice('/api/links/'.length);
+        const { tagId } = await readJson(request) || {};
+        let link;
+        let tag;
+        await store.change(data => {
+          const existing = data.links.find(item => item.id === id);
+          if (!existing) throw fail(404, '这个网页已经被移除了');
+          tag = { ...requireTag(data, tagId), collapsed: false };
+          link = { ...existing, tagId };
+          return {
+            tags: data.tags.map(item => item.id === tag.id ? tag : item),
+            links: data.links.map(item => item.id === id ? link : item),
+          };
+        });
+        return sendJson(response, 200, { link, tag });
       }
       if (pathname.startsWith('/api/links/') && request.method === 'DELETE') {
         const id = pathname.slice('/api/links/'.length);
-        await store.change(links => {
-          if (!links.some(link => link.id === id)) throw fail(404, '这个网页已经被移除了');
-          return links.filter(link => link.id !== id);
+        await store.change(data => {
+          if (!data.links.some(link => link.id === id)) throw fail(404, '这个网页已经被移除了');
+          return { ...data, links: data.links.filter(link => link.id !== id) };
         });
         response.writeHead(204);
         return response.end();
+      }
+      if (pathname === '/api/tags' && request.method === 'POST') {
+        const input = await readJson(request);
+        const name = typeof input?.name === 'string' ? input.name.trim() : '';
+        if (!name || name.length > 60) throw fail(400, '请输入 1–60 个字符的标签名称');
+        const tag = { id: randomUUID(), name, collapsed: false, createdAt: new Date().toISOString() };
+        await store.change(data => {
+          if (data.tags.some(item => item.name === name)) throw fail(409, '这个标签名称已经存在');
+          return { ...data, tags: [...data.tags, tag] };
+        });
+        return sendJson(response, 201, { tag });
+      }
+      if (pathname === '/api/tags' && request.method === 'PATCH') {
+        const collapsed = parseCollapsed(await readJson(request));
+        await store.change(data => ({ ...data, tags: data.tags.map(tag => ({ ...tag, collapsed })) }));
+        return sendJson(response, 200, { tags: store.list().tags });
+      }
+      if (pathname.startsWith('/api/tags/') && request.method === 'PATCH') {
+        const id = pathname.slice('/api/tags/'.length);
+        const collapsed = parseCollapsed(await readJson(request));
+        let tag;
+        await store.change(data => {
+          tag = { ...requireTag(data, id), collapsed };
+          return { ...data, tags: data.tags.map(item => item.id === id ? tag : item) };
+        });
+        return sendJson(response, 200, { tag });
       }
       if (pathname.startsWith('/api/')) throw fail(404, '接口不存在');
 

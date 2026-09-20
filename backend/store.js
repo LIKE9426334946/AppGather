@@ -1,11 +1,18 @@
-import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+
+export const DEFAULT_TAG_ID = 'default';
+const emptyData = () => ({
+  tags: [{ id: DEFAULT_TAG_ID, name: '未分类', collapsed: false }],
+  links: [],
+});
 
 // 单进程内按顺序写入，临时文件写完后再替换，避免并发添加丢失数据。
 export async function createStore(directory) {
   await mkdir(directory, { recursive: true });
   const filename = join(directory, 'links.json');
-  let links;
+  let data;
   let pending = Promise.resolve();
 
   async function persist(next) {
@@ -25,21 +32,31 @@ export async function createStore(directory) {
   }
 
   try {
-    links = JSON.parse(await readFile(filename, 'utf8'));
-    if (!Array.isArray(links)) throw new Error('links.json 的内容必须是数组');
+    data = JSON.parse(await readFile(filename, 'utf8'));
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    links = [];
-    await persist(links);
+    data = emptyData();
+    await persist(data);
+  }
+
+  // 旧版本只保存网页数组，迁移前保留原文件，网页本身的信息保持不变。
+  if (Array.isArray(data)) {
+    await copyFile(filename, join(directory, 'links.before-tags.json'), constants.COPYFILE_EXCL)
+      .catch(error => { if (error.code !== 'EEXIST') throw error; });
+    data = { ...emptyData(), links: data.map(link => ({ ...link, tagId: DEFAULT_TAG_ID })) };
+    await persist(data);
+  }
+  if (!Array.isArray(data?.tags) || !Array.isArray(data?.links)) {
+    throw new Error('links.json 的内容必须包含 tags 和 links 数组');
   }
 
   return {
-    list: () => links,
+    list: () => data,
     change(update) {
       const operation = pending.then(async () => {
-        const next = update(links);
+        const next = update(data);
         await persist(next);
-        links = next;
+        data = next;
       });
       pending = operation.catch(() => {});
       return operation;

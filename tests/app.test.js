@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../backend/server.js';
@@ -20,19 +20,21 @@ const post = data => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(data),
 });
+const patch = data => ({ ...post(data), method: 'PATCH' });
 
 test('网页可以添加、持久化、重启后读取、删除', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'appgather-'));
   let app = await start(directory);
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
 
-  assert.deepEqual(await (await app.request('/api/links')).json(), { links: [] });
+  assert.deepEqual((await (await app.request('/api/links')).json()).links, []);
   const response = await app.request('/api/links', post({ name: ' 我的网盘 ', url: 'http://192.168.0.150:16025/目录?q=学习' }));
   assert.equal(response.status, 201);
   const { link } = await response.json();
   assert.equal(link.name, '我的网盘');
   assert.equal(new URL(link.url).port, '16025');
-  assert.deepEqual(JSON.parse(await readFile(join(directory, 'links.json'), 'utf8')), [link]);
+  assert.equal(link.tagId, 'default');
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'links.json'), 'utf8')).links, [link]);
 
   await app.close();
   app = await start(directory);
@@ -64,7 +66,7 @@ test('并发添加与删除不会覆盖彼此的数据', async t => {
   assert.equal(new Set(links.map(link => link.id)).size, 12);
   assert.equal(links.some(link => link.id === added[0].id), false);
   assert.equal(links.some(link => link.name === '新网页'), true);
-  assert.deepEqual(JSON.parse(await readFile(join(directory, 'links.json'), 'utf8')), links);
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'links.json'), 'utf8')).links, links);
 });
 
 test('无效协议、跨站修改和直接读取数据文件被拒绝，静态页面正常返回', async t => {
@@ -78,6 +80,7 @@ test('无效协议、跨站修改和直接读取数据文件被拒绝，静态�
   const crossSite = post({ name: '网页', url: 'https://example.com' });
   crossSite.headers.Origin = 'https://another-site.example';
   assert.equal((await app.request('/api/links', crossSite)).status, 403);
+  assert.equal((await app.request('/api/tags', { ...crossSite, method: 'PATCH', body: JSON.stringify({ collapsed: true }) })).status, 403);
   assert.equal((await app.request('/backend/data/links.json')).status, 404);
   assert.equal((await app.request('/../package.json')).status, 404);
   assert.equal((await app.request('/api/links/missing', { method: 'DELETE' })).status, 404);
@@ -91,4 +94,85 @@ test('无效协议、跨站修改和直接读取数据文件被拒绝，静态�
   const text = '<img src=x onerror=alert(1)>';
   const { link } = await (await app.request('/api/links', post({ name: text, url: 'https://example.com' }))).json();
   assert.equal(link.name, text);
+});
+
+test('旧网页数组自动归入未分类，原文件备份与网页信息完整保留，重复启动不重复迁移', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'appgather-migrate-'));
+  const oldLinks = [
+    { id: 'old-1', name: '我的网盘', url: 'http://192.168.0.150:16025/', createdAt: '2026-09-20T13:00:00Z' },
+    { id: 'old-2', name: '学习网页', url: 'https://example.com/path?q=%E5%AD%A6%E4%B9%A0#section' },
+  ];
+  const originalFile = `${JSON.stringify(oldLinks, null, 2)}\n`;
+  await writeFile(join(directory, 'links.json'), originalFile);
+  let app = await start(directory);
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+
+  const state = await (await app.request('/api/links')).json();
+  assert.deepEqual(state.links, oldLinks.map(link => ({ ...link, tagId: 'default' })));
+  assert.deepEqual(state.tags, [{ id: 'default', name: '未分类', collapsed: false }]);
+  assert.equal(await readFile(join(directory, 'links.before-tags.json'), 'utf8'), originalFile);
+  assert.equal((await app.request('/api/tags/default', patch({ collapsed: true }))).status, 200);
+
+  await app.close();
+  app = await start(directory);
+  const restored = await (await app.request('/api/links')).json();
+  assert.deepEqual(restored.links, state.links);
+  assert.equal(restored.tags.length, 1);
+  assert.equal(restored.tags[0].collapsed, true);
+  assert.equal(await readFile(join(directory, 'links.before-tags.json'), 'utf8'), originalFile);
+});
+
+test('多个标签容纳网页、移动网页、单独和全部折叠展开，并在重启后保留状态', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'appgather-tags-'));
+  let app = await start(directory);
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const createTag = async name => {
+    const response = await app.request('/api/tags', post({ name }));
+    assert.equal(response.status, 201);
+    return (await response.json()).tag;
+  };
+  const myApps = await createTag('我的App');
+  const learning = await createTag('学习');
+  const readState = async () => (await app.request('/api/links')).json();
+  assert.equal((await readState()).links.length, 0);
+
+  const added = await Promise.all(['网页 A', '网页 B', '网页 C'].map(async name => {
+    const response = await app.request('/api/links', post({ name, url: 'https://example.com', tagId: myApps.id }));
+    assert.equal(response.status, 201);
+    return (await response.json()).link;
+  }));
+  assert.equal((await readState()).links.filter(link => link.tagId === myApps.id).length, 3);
+  await app.request(`/api/tags/${myApps.id}`, patch({ collapsed: true }));
+  let state = await readState();
+  assert.equal(state.tags.find(tag => tag.id === myApps.id).collapsed, true);
+  assert.equal(state.tags.find(tag => tag.id === learning.id).collapsed, false);
+
+  await app.close();
+  app = await start(directory);
+  assert.equal((await readState()).tags.find(tag => tag.id === myApps.id).collapsed, true);
+  await app.request(`/api/tags/${myApps.id}`, patch({ collapsed: false }));
+  assert.equal((await readState()).tags.find(tag => tag.id === myApps.id).collapsed, false);
+
+  await app.request('/api/tags', patch({ collapsed: true }));
+  assert.equal((await readState()).tags.every(tag => tag.collapsed), true);
+  const moved = await app.request(`/api/links/${added[0].id}`, patch({ tagId: learning.id }));
+  assert.equal(moved.status, 200);
+  state = await readState();
+  assert.deepEqual(state.links.find(link => link.id === added[0].id), { ...added[0], tagId: learning.id });
+  assert.equal(state.tags.find(tag => tag.id === learning.id).collapsed, false);
+  assert.equal(state.tags.find(tag => tag.id === myApps.id).collapsed, true);
+
+  await app.request('/api/tags', patch({ collapsed: false }));
+  await app.close();
+  app = await start(directory);
+  state = await readState();
+  assert.equal(state.tags.every(tag => !tag.collapsed), true);
+  assert.equal(state.links.filter(link => link.tagId === myApps.id).length, 2);
+  assert.equal(state.links.filter(link => link.tagId === learning.id).length, 1);
+
+  assert.equal((await app.request('/api/tags', post({ name: ' 我的App ' }))).status, 409);
+  assert.equal((await app.request('/api/tags', patch({ collapsed: 'false' }))).status, 400);
+  assert.equal((await app.request('/api/links', post({ name: '无效标签', url: 'https://example.com', tagId: 'missing' }))).status, 404);
+  assert.equal((await app.request(`/api/links/${added[0].id}`, patch({ tagId: 'missing' }))).status, 404);
+  assert.deepEqual(await readState(), state);
 });

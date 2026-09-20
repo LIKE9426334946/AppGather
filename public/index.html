@@ -32,10 +32,20 @@
         <div class="title-row"><h1>我的网页</h1><span id="link-count" class="count" hidden>0</span></div>
         <p class="workspace-hint" id="workspace-hint">点击卡片，在新标签页打开。</p>
       </div>
-      <button id="manage-button" class="button button-secondary" aria-pressed="false" disabled>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M8 5v4M16 10v4M10 15v4"/></svg>
-        <span>整理网页</span>
-      </button>
+      <div class="workspace-actions">
+        <div class="fold-actions" aria-label="标签展开和折叠">
+          <button id="collapse-all" class="button button-secondary" disabled>全部折叠</button>
+          <button id="expand-all" class="button button-secondary" disabled>全部展开</button>
+        </div>
+        <button id="add-tag-button" class="button button-secondary" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13 11 22 2 13V4h9l9 9Z"/><circle cx="7" cy="9" r="1"/></svg>
+          新增标签
+        </button>
+        <button id="manage-button" class="button button-secondary" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M8 5v4M16 10v4M10 15v4"/></svg>
+          <span>整理网页</span>
+        </button>
+      </div>
     </div>
 
     <section id="loading-state" class="state-panel" aria-live="polite">
@@ -61,7 +71,7 @@
       </button>
     </section>
 
-    <section id="link-grid" class="link-grid" aria-label="已收藏的网页" hidden></section>
+    <section id="tag-groups" class="tag-groups" aria-label="按标签分类的网页" hidden></section>
     <footer class="workspace-footer"><span class="mini-mark" aria-hidden="true">▦</span> AppGather <span class="footer-divider">/</span> 我的常用，触手可及</footer>
     <noscript><p class="noscript">请启用浏览器的 JavaScript，以添加和打开网页。</p></noscript>
   </main>
@@ -82,8 +92,23 @@
       <label for="link-url">网页地址</label>
       <input id="link-url" name="url" type="text" inputmode="url" placeholder="https://example.com" maxlength="2048" required autocomplete="url" spellcheck="false" autocapitalize="off" aria-describedby="url-help">
       <p class="field-help" id="url-help">支持 HTTP、HTTPS，以及带端口的 IP 地址。</p>
+      <label for="link-tag">所属标签</label>
+      <select id="link-tag" name="tagId"></select>
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <div class="modal-actions"><button type="button" class="button button-secondary close-dialog">取消</button><button id="save-button" type="submit" class="button button-primary">添加网页</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="tag-dialog" class="modal" aria-labelledby="tag-title" aria-describedby="tag-description">
+    <div class="modal-header">
+      <div><h2 id="tag-title">新增标签</h2><p id="tag-description">把相关的网页收在同一个标签下。</p></div>
+      <button class="icon-button close-tag-dialog" aria-label="关闭标签窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
+    </div>
+    <form id="tag-form">
+      <label for="tag-name">标签名称</label>
+      <input id="tag-name" name="name" placeholder="例如：我的App" maxlength="60" required autocomplete="off" autofocus>
+      <p id="tag-error" class="form-error" role="alert" hidden></p>
+      <div class="modal-actions"><button type="button" class="button button-secondary close-tag-dialog">取消</button><button id="save-tag-button" type="submit" class="button button-primary">创建标签</button></div>
     </form>
   </dialog>
 
