@@ -3,23 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp } from '../backend/server.js';
-
-async function start(dataDir) {
-  const server = await createApp({ dataDir });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  return {
-    request: (path, options) => fetch(`${base}${path}`, options),
-    close: () => new Promise(resolve => server.close(resolve)),
-  };
-}
-
-const post = data => ({
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(data),
-});
+import { start, post } from './helpers.js';
 const patch = data => ({ ...post(data), method: 'PATCH' });
 
 test('网页可以添加、持久化、重启后读取、删除', async t => {

@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd /opt/AppGather
 
+bash deploy/setup-auth.sh
+
 install -m 644 deploy/AppGather.service /etc/systemd/system/AppGather.service
 install -m 644 deploy/AppGather.nginx /etc/nginx/sites-available/AppGather
 ln -sfn /etc/nginx/sites-available/AppGather /etc/nginx/sites-enabled/AppGather

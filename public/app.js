@@ -28,6 +28,44 @@ let groupBusy = false;
 let pendingDelete = null;
 let editingLink = null;
 let toastTimer;
+let sessionTimer;
+let leaving = false;
+let checkingSession = false;
+
+function returnToLogin() {
+  if (leaving) return;
+  leaving = true;
+  clearTimeout(sessionTimer);
+  loaded = false;
+  links = [];
+  tags = [];
+  groups.replaceChildren();
+  starredGrid.replaceChildren();
+  document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  document.body.hidden = true;
+  window.location.replace('/login');
+}
+
+function watchSession(session) {
+  clearTimeout(sessionTimer);
+  // A 30-day timeout exceeds the browser limit; check at least once each day.
+  const delay = Math.min(Math.max(session.expiresAt - Date.now(), 1000), 24 * 60 * 60 * 1000);
+  sessionTimer = setTimeout(checkSession, delay);
+}
+
+async function checkSession() {
+  if (leaving || checkingSession) return;
+  checkingSession = true;
+  clearTimeout(sessionTimer);
+  try {
+    watchSession(await api('/api/auth/session'));
+  } catch {
+    // An expired/revoked session redirects in api(); retry transient network errors.
+    if (!leaving) sessionTimer = setTimeout(checkSession, 60 * 1000);
+  } finally {
+    checkingSession = false;
+  }
+}
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -45,6 +83,10 @@ async function api(path, options = {}) {
     });
   } catch {
     throw new Error('连接失败，请检查网络后重试。');
+  }
+  if (response.status === 401) {
+    returnToLogin();
+    throw new Error('登录已失效，请重新登录。');
   }
   if (response.status === 204) return;
   const data = await response.json();
@@ -260,7 +302,9 @@ async function loadLinks() {
   groups.hidden = true;
   updateControls();
   try {
-    const data = await api('/api/links');
+    const [data, session] = await Promise.all([api('/api/links'), api('/api/auth/session')]);
+    if (leaving) return;
+    watchSession(session);
     links = data.links;
     tags = data.tags;
     loaded = true;
@@ -510,4 +554,26 @@ $('#retry-button').addEventListener('click', loadLinks);
 nameInput.addEventListener('input', updatePreview);
 urlInput.addEventListener('input', updatePreview);
 manageButton.addEventListener('click', () => { managing = !managing; updateManage(); });
+$('#logout-button').addEventListener('click', async () => {
+  const button = $('#logout-button');
+  if (button.disabled || leaving) return;
+  button.disabled = true;
+  try {
+    await api('/api/auth/logout', { method: 'POST' });
+    returnToLogin();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted) {
+    document.body.hidden = true;
+    window.location.reload();
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkSession();
+});
 loadLinks();

@@ -12,7 +12,8 @@
 - 统一尺寸的卡片网格，适配电脑、平板和手机。
 - 点击「整理网页」可编辑网页名称、链接和所属标签，也可确认删除对应入口。
 - 数据保存在服务器 JSON 文件中，刷新页面、换设备或重启服务后仍然保留。
-- 不包含登录系统，首次运行列表为空，由你添加自己的网页。
+- 仅支持固定账号 `noart`，使用指定密码登录；不提供注册或创建账号功能。
+- 登录有效期为 30 天，到期需重新登录，也可以随时退出。首次运行列表为空，由你添加自己的网页。
 
 ## 部署配置
 
@@ -26,6 +27,8 @@
 | Node.js 监听 | `127.0.0.1:3050` |
 | systemd 服务 | `AppGather.service` |
 | 数据文件 | `/opt/AppGather/backend/data/links.json` |
+| 登录凭据文件 | `/opt/AppGather/backend/data/credentials.json`（仅服务器保存） |
+| 登录会话文件 | `/opt/AppGather/backend/data/sessions.json` |
 | Nginx 配置 | `/etc/nginx/sites-available/AppGather` |
 
 ## 首次部署
@@ -67,12 +70,16 @@ cd /opt/AppGather
 bash deploy/deploy.sh
 ```
 
-脚本会复制本项目的 systemd / Nginx 配置，启用 Nginx 配置链接，检查 Nginx 配置，设置开机自启并启动服务。最后检查 `16050` 端口的健康接口。
+首次运行时，脚本会提示输入固定账号 `noart` 的密码，请输入已指定的密码；输入时不回显。密码摘要仅保存在服务器的 `backend/data/credentials.json`，不会写入代码仓库。以后更新会保留已有凭据，不再提示输入。
+
+随后脚本会复制本项目的 systemd / Nginx 配置，启用 Nginx 配置链接，检查 Nginx 配置，设置开机自启并启动服务。最后检查 `16050` 端口的健康接口。
 
 也可以手动执行与脚本对应的步骤：
 
 ```bash
 cd /opt/AppGather
+
+bash deploy/setup-auth.sh
 
 cp deploy/AppGather.service /etc/systemd/system/AppGather.service
 cp deploy/AppGather.nginx /etc/nginx/sites-available/AppGather
@@ -108,6 +115,8 @@ curl http://127.0.0.1:16050/api/health
 
 ## 使用方式
 
+打开网站后先使用固定账号 `noart` 和已指定的密码登录。登录成功后进入网页列表，右上角「退出登录」可结束当前设备的会话。
+
 1. 点击「新增标签」，例如创建「我的App」「学习」；空标签可以先创建，再添加网页。
 2. 点击「添加网页」，填写名称和地址，选择所属标签后保存。在标签标题右侧添加网页时，会自动选中该标签。
 3. 如输入 `192.168.0.150:16025`，会自动补充为 `http://192.168.0.150:16025`；普通域名默认补充 `https://`。如果该网页使用 HTTP，请在地址中明确保留 `http://`。
@@ -134,15 +143,26 @@ bash deploy/deploy.sh
 
 已有网页未设置星标时默认不打星标，无须手动转换数据。星标状态和编辑后的信息也保存在同一个 `links.json` 文件中，刷新页面或重启服务后仍然保留。
 
+首次升级到登录版本时，运行 `bash deploy/deploy.sh`，按提示输入已指定的密码，然后即可访问登录页。原有网页和标签会保留。之后更新只需拉取代码并执行 `systemctl restart AppGather`；服务重启不会提前结束尚未到期的登录。
+
+## 单账号登录
+
+本次按新增需求提供固定单账号登录：首页、网页和标签数据接口都由服务端验证会话，没有注册或账号管理接口。密码在服务端以加盐 scrypt 摘要校验；明文密码和生产密码摘要都不进入代码仓库。凭据文件仅文件所有者可读写，初始化脚本不会覆盖已有密码；未初始化时服务拒绝启动。健康检查 `/api/health` 保持公开，仅返回服务状态。
+
+登录后有效 30 天，从本次登录成功时计算，日常访问不会延长期限。浏览器保存 HttpOnly、SameSite=Strict Cookie，服务器仅保存随机会话令牌的 SHA-256 摘要和到期时间。会话文件以原子替换方式写入且仅服务器文件所有者可读写。现有 HTTP 端口可继续使用；如通过 HTTPS 反向代理访问，会根据 Nginx 的 `X-Forwarded-Proto` 设置 Secure Cookie。
+
+退出登录会立即撤销当前设备的令牌，其他设备仍可使用同一账号。连续输错 5 次后，该来源需要等待 15 分钟再试。清除浏览器 Cookie 也会需要重新登录。如需强制退出所有设备，先停止服务，删除 `backend/data/sessions.json`，再启动服务。
+
 ## 数据备份
 
-需要保存的数据只有 `/opt/AppGather/backend/data/links.json`。可以把 `/opt/AppGather/backend/data` 加入你的服务器备份任务。
+网页和标签保存在 `/opt/AppGather/backend/data/links.json`，登录凭据与会话分别保存在同一目录的 `credentials.json`、`sessions.json`。可以把整个 `backend/data` 加入服务器备份任务，凭据和会话备份应只由服务器管理者保管。仅恢复网页数据时无需恢复会话文件；新服务器需恢复凭据文件或重新运行初始化脚本。
 
 恢复备份时先停止 `AppGather`，替换 `links.json` 后再启动服务；运行中的服务会使用内存中的列表。
 
 ## 本地运行与测试
 
 ```bash
+bash deploy/setup-auth.sh
 npm start
 ```
 
@@ -152,7 +172,7 @@ npm start
 npm test
 ```
 
-测试使用临时数据目录，验证添加、读取、删除、并发保存、旧数据迁移、标签归类、折叠展开、星标与编辑、重启恢复和基本请求边界，不会修改实际网页列表。
+测试使用临时数据目录及独立测试密码，验证添加、读取、删除、并发保存、旧数据迁移、标签归类、折叠展开、星标与编辑、登录保护、30 天到期、会话重启恢复、退出撤销和请求边界，不会修改实际网页列表。
 
 ## 常用维护命令
 
@@ -169,10 +189,15 @@ nginx -t
 | --- | --- |
 | `backend/server.js` | Node.js HTTP 服务、网页 API 和静态资源 |
 | `backend/store.js` | JSON 读取、串行写入和原子替换 |
+| `backend/auth.js` | 固定账号校验、登录限速、30 天会话和退出撤销 |
+| `backend/credentials.js` | 从标准输入初始化服务器凭据，读取摘要并校验密码 |
 | `public/index.html` | 页面与弹窗 |
+| `public/login.html`、`public/login.js` | 登录页面和交互 |
 | `public/styles.css` | 响应式布局和视觉样式 |
 | `public/app.js` | 网页编辑、星标置顶、标签交互、折叠展开和图标回退 |
 | `deploy/AppGather.service` | systemd 服务配置 |
 | `deploy/AppGather.nginx` | 16050 → 3050 反向代理和 WebSocket 请求头 |
 | `deploy/deploy.sh` | 配置安装与服务启动 |
+| `deploy/setup-auth.sh` | 首次部署时隐藏输入密码，保留已有凭据 |
 | `tests/app.test.js` | 独立临时目录中的接口集成测试 |
+| `tests/auth.test.js` | 访问保护、Cookie、到期和退出集成测试 |

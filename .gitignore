@@ -1,5 +1,7 @@
 node_modules/
 backend/data/
+credentials.json
+credentials.json.*.tmp
 .env
 *.log
 .DS_Store

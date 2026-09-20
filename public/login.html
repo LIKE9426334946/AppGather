@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <title>登录 · AppGather</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/login.js" type="module"></script>
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <div class="brand login-brand">
+      <img src="/favicon.svg" width="42" height="42" alt="">
+      <span>AppGather</span>
+    </div>
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="login-symbol" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>
+      </div>
+      <h1 id="login-title">欢迎回来</h1>
+      <p class="login-intro">登录后，打开你的网页导航台。</p>
+      <form id="login-form">
+        <label for="username">用户名</label>
+        <input id="username" name="username" value="noart" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="100" required>
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" placeholder="请输入密码" autocomplete="current-password" maxlength="1024" required autofocus>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-button" class="button button-primary login-submit" type="submit">登录</button>
+      </form>
+      <p class="login-note">登录状态保留 30 天</p>
+      <noscript><p class="noscript">请启用 JavaScript 后登录。</p></noscript>
+    </section>
+    <p class="login-footer">把常用网页，收在一起。</p>
+  </main>
+</body>
+</html>

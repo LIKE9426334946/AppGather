@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createStore, DEFAULT_TAG_ID } from './store.js';
+import { createAuth } from './auth.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +22,7 @@ function sendJson(response, status, data) {
 
 async function readJson(request) {
   if (!request.headers['content-type']?.startsWith('application/json')) {
-    throw fail(415, '请使用 JSON 提交网页信息');
+    throw fail(415, '请使用 JSON 提交信息');
   }
   const chunks = [];
   let size = 0;
@@ -33,7 +34,7 @@ async function readJson(request) {
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch {
-    throw fail(400, '网页信息格式不正确');
+    throw fail(400, '提交的信息格式不正确');
   }
 }
 
@@ -65,10 +66,13 @@ function parseCollapsed(input) {
   return input.collapsed;
 }
 
-export async function createApp({ dataDir = process.env.DATA_DIR || join(here, 'data') } = {}) {
+export async function createApp({ dataDir = process.env.DATA_DIR || join(here, 'data'), authOptions } = {}) {
   const store = await createStore(dataDir);
+  const auth = await createAuth(dataDir, authOptions);
   const assets = new Map(await Promise.all([
     ['/', 'index.html', 'text/html; charset=utf-8'],
+    ['/login', 'login.html', 'text/html; charset=utf-8'],
+    ['/login.js', 'login.js', 'text/javascript; charset=utf-8'],
     ['/styles.css', 'styles.css', 'text/css; charset=utf-8'],
     ['/app.js', 'app.js', 'text/javascript; charset=utf-8'],
     ['/favicon.svg', 'favicon.svg', 'image/svg+xml'],
@@ -84,16 +88,32 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
       const { pathname } = new URL(request.url, 'http://localhost');
 
       if (['POST', 'PATCH', 'DELETE'].includes(request.method)) {
-        // 阻止其他网站在浏览器中跨站修改；不引入用户账号系统。
+        // 登录、退出和数据修改都只允许同站浏览器请求。
         const origin = request.headers.origin;
+        let originHost;
+        try { originHost = origin && new URL(origin).host; } catch { throw fail(403, '请在 AppGather 页面内操作'); }
         if (request.headers['sec-fetch-site'] === 'cross-site' ||
-            (origin && new URL(origin).host !== request.headers.host)) {
+            (origin && originHost !== request.headers.host)) {
           throw fail(403, '请在 AppGather 页面内操作');
         }
       }
 
       if (pathname === '/api/health' && request.method === 'GET') {
         return sendJson(response, 200, { status: 'ok' });
+      }
+      if (pathname === '/api/auth/login' && request.method === 'POST') {
+        return sendJson(response, 200, await auth.login(request, response, await readJson(request)));
+      }
+      if (pathname === '/api/auth/logout' && request.method === 'POST') {
+        await auth.logout(request, response);
+        response.writeHead(204, { 'Cache-Control': 'no-store' });
+        return response.end();
+      }
+      const session = auth.session(request);
+      // Gate every data API centrally, including routes added in the future.
+      if (pathname.startsWith('/api/') && !session) throw fail(401, '请先登录 AppGather');
+      if (pathname === '/api/auth/session' && request.method === 'GET') {
+        return sendJson(response, 200, session);
       }
       if (pathname === '/api/links' && request.method === 'GET') {
         return sendJson(response, 200, store.list());
@@ -182,18 +202,25 @@ export async function createApp({ dataDir = process.env.DATA_DIR || join(here, '
       }
       if (pathname.startsWith('/api/')) throw fail(404, '接口不存在');
 
-      const asset = assets.get(pathname === '/index.html' ? '/' : pathname);
+      const route = pathname === '/index.html' ? '/' : pathname === '/login.html' ? '/login' : pathname;
+      const asset = assets.get(route);
       if (!asset) throw fail(404, '页面不存在');
       if (!['GET', 'HEAD'].includes(request.method)) throw fail(405, '不支持此请求方式');
+      if ((route === '/' && !session) || (route === '/login' && session)) {
+        response.writeHead(302, { Location: session ? '/' : '/login', 'Cache-Control': 'no-store' });
+        return response.end();
+      }
+      if (route === '/app.js' && !session) throw fail(401, '请先登录 AppGather');
       response.writeHead(200, {
         'Content-Type': asset.type,
         'Content-Length': asset.body.length,
-        'Cache-Control': 'no-cache',
+        'Cache-Control': ['/', '/login', '/app.js', '/login.js'].includes(route) ? 'no-store' : 'no-cache',
       });
       response.end(request.method === 'HEAD' ? undefined : asset.body);
     } catch (error) {
       if (!error.status) console.error(error);
       if (!response.headersSent && !response.destroyed) {
+        if (error.retryAfter) response.setHeader('Retry-After', String(error.retryAfter));
         sendJson(response, error.status || 500, {
           error: error.status ? error.message : '保存失败，请稍后重试',
         });
