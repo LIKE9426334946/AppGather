@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AppGather，把常用网页收在一起。添加名称和网址，一键打开你的常用应用。">
+  <meta name="theme-color" content="#f7f8fc">
+  <title>AppGather · 我的网页</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到网页列表</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="AppGather 首页">
+        <img src="/favicon.svg" width="38" height="38" alt="">
+        <span>AppGather</span>
+      </a>
+      <span class="header-caption">你的网页导航台</span>
+      <button class="button button-primary header-add" data-add>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        添加网页
+      </button>
+    </div>
+  </header>
+
+  <main id="main" class="workspace">
+    <div class="workspace-heading">
+      <div>
+        <div class="title-row"><h1>我的网页</h1><span id="link-count" class="count" hidden>0</span></div>
+        <p class="workspace-hint" id="workspace-hint">点击卡片，在新标签页打开。</p>
+      </div>
+      <button id="manage-button" class="button button-secondary" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M8 5v4M16 10v4M10 15v4"/></svg>
+        <span>整理网页</span>
+      </button>
+    </div>
+
+    <section id="loading-state" class="state-panel" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span><p>正在加载网页…</p>
+    </section>
+
+    <section id="error-state" class="state-panel" hidden>
+      <div class="state-icon error-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3h.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+      <h2>暂时无法加载</h2><p id="load-error">请检查连接后重试。</p>
+      <button id="retry-button" class="button button-primary">重新加载</button>
+    </section>
+
+    <section id="empty-state" class="empty-state" hidden>
+      <div class="empty-symbol" aria-hidden="true">
+        <span class="empty-square square-one"></span><span class="empty-square square-two"></span>
+        <span class="empty-square square-three"></span><span class="empty-square square-four">+</span>
+      </div>
+      <h2>常用网页，从这里集合</h2>
+      <p>添加名称和网址，留一个随时出发的入口。</p>
+      <button class="button button-primary" data-add>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        添加第一个网页
+      </button>
+    </section>
+
+    <section id="link-grid" class="link-grid" aria-label="已收藏的网页" hidden></section>
+    <footer class="workspace-footer"><span class="mini-mark" aria-hidden="true">▦</span> AppGather <span class="footer-divider">/</span> 我的常用，触手可及</footer>
+    <noscript><p class="noscript">请启用浏览器的 JavaScript，以添加和打开网页。</p></noscript>
+  </main>
+
+  <dialog id="add-dialog" class="modal" aria-labelledby="add-title" aria-describedby="add-description">
+    <div class="modal-header">
+      <div><h2 id="add-title">添加网页</h2><p id="add-description">给常用网页留一个位置。</p></div>
+      <button class="icon-button close-dialog" aria-label="关闭添加窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
+    </div>
+    <form id="add-form">
+      <div class="link-preview" aria-hidden="true">
+        <div id="preview-icon" class="app-icon tone-blue">A</div>
+        <div class="preview-copy"><strong id="preview-name">网页名称</strong><span id="preview-url">example.com</span></div>
+        <svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg>
+      </div>
+      <label for="link-name">网页名称</label>
+      <input id="link-name" name="name" placeholder="例如：我的网盘" maxlength="60" required autocomplete="off" autofocus>
+      <label for="link-url">网页地址</label>
+      <input id="link-url" name="url" type="text" inputmode="url" placeholder="https://example.com" maxlength="2048" required autocomplete="url" spellcheck="false" autocapitalize="off" aria-describedby="url-help">
+      <p class="field-help" id="url-help">支持 HTTP、HTTPS，以及带端口的 IP 地址。</p>
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+      <div class="modal-actions"><button type="button" class="button button-secondary close-dialog">取消</button><button id="save-button" type="submit" class="button button-primary">添加网页</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-dialog" class="modal delete-modal" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <div class="delete-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></div>
+    <h2 id="delete-title">移除这个网页？</h2>
+    <p id="delete-description"></p>
+    <p id="delete-error" class="form-error" role="alert" hidden></p>
+    <div class="modal-actions"><button id="cancel-delete" class="button button-secondary" autofocus>取消</button><button id="confirm-delete" class="button button-danger">确认移除</button></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
