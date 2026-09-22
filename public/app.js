@@ -10,6 +10,7 @@ const nameInput = $('#link-name');
 const urlInput = $('#link-url');
 const tagInput = $('#link-tag');
 const manageButton = $('#manage-button');
+const searchInput = $('#link-search');
 const DEFAULT_TAG_ID = 'default';
 const tones = ['blue', 'violet', 'teal', 'orange', 'rose', 'cyan'];
 const arrowSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>';
@@ -31,6 +32,8 @@ let toastTimer;
 let sessionTimer;
 let leaving = false;
 let checkingSession = false;
+let searchTerm = '';
+const searchCollapsedTags = new Set();
 
 function returnToLogin() {
   if (leaving) return;
@@ -200,16 +203,40 @@ function fillTagOptions(select, selectedId) {
   select.value = selectedId;
 }
 
-function visibleTags() {
+function matchingLinks() {
+  return links.filter(link => link.name.toLowerCase().includes(searchTerm));
+}
+
+function visibleTags(matched = matchingLinks()) {
+  if (searchTerm) return tags.filter(tag => matched.some(link => link.tagId === tag.id));
   return tags.filter(tag => tag.id !== DEFAULT_TAG_ID || links.some(link => link.tagId === tag.id));
+}
+
+function isCollapsed(tag) {
+  return searchTerm ? searchCollapsedTags.has(tag.id) : tag.collapsed;
+}
+
+function applySearch() {
+  searchTerm = searchInput.value.trim().toLowerCase();
+  searchCollapsedTags.clear();
+  $('#clear-search').hidden = !searchInput.value;
+  if (loaded) render();
+}
+
+function clearSearch() {
+  searchInput.value = '';
+  applySearch();
+  searchInput.focus();
 }
 
 function updateControls() {
   const displayed = visibleTags();
+  searchInput.disabled = !loaded;
+  $('#clear-search').disabled = !loaded;
   manageButton.disabled = !loaded || groupBusy || !links.length;
   $('#add-tag-button').disabled = !loaded || groupBusy;
-  $('#collapse-all').disabled = !loaded || groupBusy || !displayed.some(tag => !tag.collapsed);
-  $('#expand-all').disabled = !loaded || groupBusy || !displayed.some(tag => tag.collapsed);
+  $('#collapse-all').disabled = !loaded || groupBusy || !displayed.some(tag => !isCollapsed(tag));
+  $('#expand-all').disabled = !loaded || groupBusy || !displayed.some(isCollapsed);
   document.querySelectorAll('[data-add], .tag-toggle, .star-button, .edit-button, .remove-button, [data-move]').forEach(control => {
     control.disabled = !loaded || groupBusy;
   });
@@ -218,11 +245,12 @@ function updateControls() {
 function updateCollapseUI() {
   for (const section of groups.children) {
     const tag = tags.find(item => item.id === section.dataset.tagId);
+    const collapsed = isCollapsed(tag);
     const toggle = section.querySelector('.tag-toggle');
-    toggle.setAttribute('aria-expanded', String(!tag.collapsed));
-    toggle.setAttribute('aria-label', `${tag.collapsed ? '展开' : '折叠'}标签「${tag.name}」`);
-    section.querySelector('.tag-content').hidden = tag.collapsed;
-    section.classList.toggle('is-collapsed', tag.collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', `${collapsed ? '展开' : '折叠'}标签「${tag.name}」`);
+    section.querySelector('.tag-content').hidden = collapsed;
+    section.classList.toggle('is-collapsed', collapsed);
   }
 }
 
@@ -236,10 +264,10 @@ function makeGroup(tag) {
   toggle.setAttribute('aria-controls', `tag-content-${tag.id}`);
   const chevron = element('span', 'tag-chevron');
   chevron.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
-  const tagLinks = links.filter(link => link.tagId === tag.id);
+  const tagLinks = matchingLinks().filter(link => link.tagId === tag.id);
   toggle.append(chevron, element('span', 'tag-name', tag.name), element('span', 'tag-count', `${tagLinks.length} 个网页`));
   toggle.title = tag.name;
-  toggle.addEventListener('click', () => setCollapsed(!tags.find(item => item.id === tag.id).collapsed, tag.id));
+  toggle.addEventListener('click', () => setCollapsed(!isCollapsed(tags.find(item => item.id === tag.id)), tag.id));
   heading.append(toggle);
 
   const add = element('button', 'button button-secondary tag-add');
@@ -260,7 +288,7 @@ function makeGroup(tag) {
   mark.innerHTML = plusSvg;
   addCard.append(mark, element('span', 'add-card-label', tagLinks.length ? '添加网页' : '添加第一个网页'));
   addCard.addEventListener('click', () => openAdd(tag.id));
-  content.append(addCard);
+  if (!searchTerm) content.append(addCard);
   section.append(header, content);
   return section;
 }
@@ -272,17 +300,21 @@ function updateManage() {
   }
   manageButton.setAttribute('aria-pressed', String(managing));
   manageButton.querySelector('span').textContent = managing ? '完成整理' : '整理网页';
-  $('#workspace-hint').textContent = managing ? '编辑网页名称和地址，调整所属标签，或移除网页。' : '点击星号置顶，点击标签折叠或展开。';
+  $('#workspace-hint').textContent = searchTerm
+    ? `找到 ${matchingLinks().length} 个匹配的网页。`
+    : managing ? '编辑网页名称和地址，调整所属标签，或移除网页。' : '点击星号置顶，点击标签折叠或展开。';
 }
 
 function render() {
   if (!links.length) managing = false;
-  const displayed = visibleTags();
+  const matched = matchingLinks();
+  const displayed = visibleTags(matched);
   $('#link-count').hidden = false;
-  $('#link-count').textContent = links.length;
-  $('#link-count').setAttribute('aria-label', `${links.length} 个网页`);
-  $('#empty-state').hidden = displayed.length > 0;
-  const starred = links.filter(link => link.starred);
+  $('#link-count').textContent = searchTerm ? `${matched.length} / ${links.length}` : links.length;
+  $('#link-count').setAttribute('aria-label', searchTerm ? `匹配 ${matched.length} 个，共 ${links.length} 个网页` : `${links.length} 个网页`);
+  $('#empty-state').hidden = Boolean(searchTerm) || displayed.length > 0;
+  $('#search-empty').hidden = !searchTerm || matched.length > 0;
+  const starred = matched.filter(link => link.starred);
   starredSection.hidden = !starred.length;
   $('#starred-count').textContent = starred.length;
   starredGrid.replaceChildren(...starred.map(makeCard));
@@ -298,6 +330,7 @@ async function loadLinks() {
   $('#loading-state').hidden = false;
   $('#error-state').hidden = true;
   $('#empty-state').hidden = true;
+  $('#search-empty').hidden = true;
   starredSection.hidden = true;
   groups.hidden = true;
   updateControls();
@@ -308,7 +341,7 @@ async function loadLinks() {
     links = data.links;
     tags = data.tags;
     loaded = true;
-    render();
+    applySearch();
   } catch (error) {
     $('#load-error').textContent = error.message;
     $('#error-state').hidden = false;
@@ -319,6 +352,18 @@ async function loadLinks() {
 
 async function setCollapsed(collapsed, tagId) {
   if (groupBusy) return;
+  // Searching changes only the result view; clearing the query restores saved folds.
+  if (searchTerm) {
+    for (const tag of visibleTags()) {
+      if (!tagId || tag.id === tagId) {
+        if (collapsed) searchCollapsedTags.add(tag.id);
+        else searchCollapsedTags.delete(tag.id);
+      }
+    }
+    updateCollapseUI();
+    updateControls();
+    return;
+  }
   groupBusy = true;
   const before = tags;
   tags = tags.map(tag => !tagId || tag.id === tagId ? { ...tag, collapsed } : tag);
@@ -354,7 +399,7 @@ async function moveLink(original, select) {
   } finally {
     groupBusy = false;
     updateControls();
-    if (destination) document.getElementById(`tag-toggle-${destination}`).focus();
+    if (destination) document.getElementById(`tag-toggle-${destination}`)?.focus();
   }
 }
 
@@ -487,7 +532,7 @@ $('#tag-form').addEventListener('submit', async event => {
     tags.push(tag);
     render();
     tagDialog.close();
-    document.getElementById(`tag-toggle-${tag.id}`).focus();
+    (document.getElementById(`tag-toggle-${tag.id}`) || $('#add-tag-button')).focus();
     showToast(`已创建标签「${tag.name}」`);
   } catch (error) {
     $('#tag-error').textContent = error.message;
@@ -551,6 +596,13 @@ $('#collapse-all').addEventListener('click', () => setCollapsed(true));
 $('#expand-all').addEventListener('click', () => setCollapsed(false));
 $('#cancel-delete').addEventListener('click', () => { if (!deleting) deleteDialog.close(); });
 $('#retry-button').addEventListener('click', loadLinks);
+searchInput.addEventListener('input', applySearch);
+searchInput.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); clearSearch(); }
+});
+$('#search-form').addEventListener('submit', event => { event.preventDefault(); applySearch(); });
+$('#clear-search').addEventListener('click', clearSearch);
+$('#reset-search').addEventListener('click', clearSearch);
 nameInput.addEventListener('input', updatePreview);
 urlInput.addEventListener('input', updatePreview);
 manageButton.addEventListener('click', () => { managing = !managing; updateManage(); });
