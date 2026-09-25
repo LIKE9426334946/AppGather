@@ -11,6 +11,8 @@ const urlInput = $('#link-url');
 const tagInput = $('#link-tag');
 const manageButton = $('#manage-button');
 const searchInput = $('#link-search');
+const viewButtons = document.querySelectorAll('[data-view-mode]');
+const VIEW_MODE_KEY = 'appgather.viewMode';
 const DEFAULT_TAG_ID = 'default';
 const tones = ['blue', 'violet', 'teal', 'orange', 'rose', 'cyan'];
 const arrowSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>';
@@ -34,6 +36,23 @@ let leaving = false;
 let checkingSession = false;
 let searchTerm = '';
 const searchCollapsedTags = new Set();
+let viewMode = 'large';
+try {
+  if (localStorage.getItem(VIEW_MODE_KEY) === 'compact') viewMode = 'compact';
+} catch {
+  // Storage may be disabled; the display switch still works for this visit.
+}
+
+function applyViewMode() {
+  $('#main').classList.toggle('is-compact', viewMode === 'compact');
+  viewButtons.forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.viewMode === viewMode));
+  });
+  document.querySelectorAll('.app-link').forEach(anchor => {
+    const name = anchor.querySelector('.app-name').textContent;
+    anchor.title = viewMode === 'compact' ? name : `${name}\n${anchor.href}`;
+  });
+}
 
 function returnToLogin() {
   if (leaving) return;
@@ -151,7 +170,7 @@ function makeCard(link) {
   anchor.href = link.url;
   anchor.target = '_blank';
   anchor.rel = 'noopener noreferrer';
-  anchor.title = `${link.name}\n${link.url}`;
+  anchor.title = viewMode === 'compact' ? link.name : `${link.name}\n${link.url}`;
   anchor.setAttribute('aria-label', `${link.name}，在新标签页打开`);
   const arrow = element('span', 'card-arrow');
   arrow.innerHTML = arrowSvg;
@@ -603,6 +622,11 @@ searchInput.addEventListener('keydown', event => {
 $('#search-form').addEventListener('submit', event => { event.preventDefault(); applySearch(); });
 $('#clear-search').addEventListener('click', clearSearch);
 $('#reset-search').addEventListener('click', clearSearch);
+viewButtons.forEach(button => button.addEventListener('click', () => {
+  viewMode = button.dataset.viewMode;
+  applyViewMode();
+  try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { /* Keep the selected view for this visit. */ }
+}));
 nameInput.addEventListener('input', updatePreview);
 urlInput.addEventListener('input', updatePreview);
 manageButton.addEventListener('click', () => { managing = !managing; updateManage(); });
@@ -628,4 +652,5 @@ window.addEventListener('pageshow', event => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') checkSession();
 });
+applyViewMode();
 loadLinks();

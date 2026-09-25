@@ -97,6 +97,26 @@ h1 { font-size: 1.75rem; letter-spacing: -.7px; font-weight: 680; line-height: 1
 .add-card-icon { width: 56px; height: 56px; border-radius: 17px; background: #e9edf6; display: grid; place-items: center; }
 .add-card-icon svg { width: 26px; height: 26px; stroke-width: 1.5; }
 .add-card-label { font-size: .875rem; font-weight: 500; }
+.is-compact .link-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.is-compact .app-card, .is-compact .add-card { border-radius: 14px; }
+.is-compact .app-link { min-height: 144px; padding: 42px 10px 16px; }
+.is-compact .app-icon { width: 40px; height: 40px; border-radius: 12px; font-size: 1.125rem; }
+.is-compact .site-icon { width: 24px; height: 24px; }
+.is-compact .app-name { margin-top: 10px; font-size: .875rem; }
+.is-compact .app-address { display: none; }
+.is-compact .card-arrow { top: 12px; right: 12px; }
+.is-compact .card-arrow svg { width: 14px; height: 14px; }
+.is-compact .star-button, .is-compact .edit-button, .is-compact .remove-button { top: 5px; width: 32px; height: 32px; border-radius: 8px; }
+.is-compact .star-button { left: 5px; }
+.is-compact .edit-button { right: 39px; }
+.is-compact .remove-button { right: 5px; }
+.is-compact .star-button svg, .is-compact .edit-button svg, .is-compact .remove-button svg { width: 16px; height: 16px; }
+.is-compact .add-card { min-height: 144px; gap: 10px; }
+.is-compact .add-card-icon { width: 40px; height: 40px; border-radius: 12px; }
+.is-compact .add-card-icon svg { width: 20px; height: 20px; }
+.is-compact .is-managing .app-link { height: auto; }
+.is-compact .move-control { padding: 8px 10px 12px; font-size: .75rem; }
+.is-compact .move-select { min-height: 34px; margin-top: 6px; padding: 6px 8px; font-size: .8125rem; }
 .workspace-footer { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; padding: 30px 0; margin-top: auto; color: #8a93a5; font-size: .75rem; }
 .mini-mark { font-size: 1rem; }
 .footer-divider { padding: 0 8px; color: #bac1cf; }
@@ -151,10 +171,10 @@ input:focus, select:focus { outline: none; border-color: #91a5fa; box-shadow: 0 
 .toast { position: fixed; z-index: 20; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 12px 22px; border-radius: 12px; background: #26324b; box-shadow: 0 6px 24px #26324b25; color: white; font-size: .875rem; overflow-wrap: anywhere; }
 
 .workspace-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
-.fold-actions { display: inline-flex; }
-.fold-actions .button { border-radius: 0; padding-left: 12px; padding-right: 12px; }
-.fold-actions .button:first-child { border-radius: 11px 0 0 11px; }
-.fold-actions .button:last-child { border-radius: 0 11px 11px 0; border-left: none; }
+.fold-actions, .view-actions { display: inline-flex; }
+.fold-actions .button, .view-actions .button { border-radius: 0; padding-left: 12px; padding-right: 12px; }
+.fold-actions .button:first-child, .view-actions .button:first-child { border-radius: 11px 0 0 11px; }
+.fold-actions .button:last-child, .view-actions .button:last-child { border-radius: 0 11px 11px 0; border-left: none; }
 .tag-groups { padding-bottom: 24px; }
 .starred-section { padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
 .starred-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
